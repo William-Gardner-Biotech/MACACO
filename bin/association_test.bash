@@ -19,8 +19,8 @@ bcftools view -r 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,X,Y $VCF -o 
 # PLINK --vcf convert to --bfile .bed
 plink --vcf vcf_qc1.vcf.gz --make-bed --out cynos
 
-# PLINK filter out SNP's below a represented frequency of 0.8
-plink --bfile cynos --maf 0.8 --make-bed --out cynos_maf
+# PLINK filter out SNP's below a represented frequency of 0.01 (default) and this really improved things
+plink --bfile cynos --maf 0.01 --make-bed --out cynos_maf
 
 # Assign phenotypes with PLINK
 plink --bfile cynos_maf --pheno $pheno_table --make-bed --out cynos_w_pheno --allow-no-sex
