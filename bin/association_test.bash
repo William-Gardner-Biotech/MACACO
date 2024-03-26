@@ -14,15 +14,18 @@ bcftools index -t $VCF
 # We are using all samples in this VCF so skip
 
 # Filter VCF down to chr1-20, X, Y, MT
-bcftools view -r 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,X $VCF -o vcf_qc1.vcf.gz
+bcftools view -r 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,X,Y $VCF -o vcf_qc1.vcf.gz
 
 # PLINK --vcf convert to --bfile .bed
 plink --vcf vcf_qc1.vcf.gz --make-bed --out cynos
 
-# Assign phenotypes with PLINK
-plink --bfile cynos --pheno $pheno_table --make-bed --out cynos_w_pheno --allow-no-sex
+# PLINK filter out SNP's below a represented frequency of 0.8
+plink --bfile cynos --maf 0.8 --make-bed --out cynos_maf
 
-# QC step 1: --mind 0.1, missing genotype data which means exclude with more than 10% missing genotypes
+# Assign phenotypes with PLINK
+plink --bfile cynos_maf --pheno $pheno_table --make-bed --out cynos_w_pheno --allow-no-sex
+
+# QC step 1: --mind 0.1, missing genotype data which means exclude samples with more than 10% missing genotypes overall
 plink --bfile cynos_w_pheno --mind 0.1 --make-bed --out cynos_qc1 --allow-no-sex
 
 # PLINK QC genotype reads
@@ -38,3 +41,7 @@ plink --bfile cynos_qc3 --assoc --allow-no-sex --out cynos_assoc
 #* Make sure to --allow-no-sex
 # To check p-values, cat cynos_assoc.assoc | awk 'BEGIN {OFS="\t"}; {print $9}' | sort | uniq
 
+# Run python program on this code
+cd ..
+
+python3 bin/manhattan_plot.py -g MMul_10/ncbi_dataset/data/GCF_003339765.1/genomic.gff -a all_cynos/cynos_assoc.assoc
