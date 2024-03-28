@@ -189,14 +189,16 @@ def generate_report(df, alpha, gff_path:str, output):
     Holm-Bonferroni and list their corresponding gene regions, if any. It will also provide metadata statistics on the overall process run.
     Finally it will also include the SNP effect. It will all be gathered into one large pandas dataframe.
     """
-    summary_report = open(output, 'w')
+    summary_report = open(output+'.txt', 'w')
 
     summary_report.write(f"MACACO output report:\n\
     Total SNPs Passing QC: {len(df)}.\n\
-    Hypothesis Testing using Significance value of {alpha}.\n\n\
+    Hypothesis Testing Significance value used: {alpha}.\n\
+    Bonferroni Corrected p-value: {0.05 / (df.shape[0])}\n\n\
+        \
         Number of SNPs rejected with Bonferroni correction:      {len(df[df['Bon_reject']==True])}\n\
         Number of SNPs rejected with Holm-Bonferroni correction: {len(df[df['Holm_reject']==True])}\n\
-        Number of SNPs rejected by both tests:                   {len(df[(df['Holm_reject']==True) & (df['Bon_reject']==True)])}")
+        Number of SNPs rejected by both tests:                   {len(df[(df['Holm_reject']==True) & (df['Bon_reject']==True)])}\n\n\n")
 
     # First step is to find where the significant SNP's intersect gene regions
     with open(gff_path, 'r') as gff:
@@ -256,11 +258,21 @@ def generate_report(df, alpha, gff_path:str, output):
         else:
             return None
         #candidates.write(f'{cand}\n')
-            
+    
+    # All working as of 28Mar24
     df['consequence'] = df.apply(grab_csq, axis=1)
+
+    df.to_csv(output+'.csv', sep=',')
 
     print(df.head())
 
+    summary_report.write('Significant gene regions and number of candidate SNPs contained within them:\n\n')
+
+    #Reporting time
+    for gene, count in df['gene_region'].value_counts().items():
+        summary_report.write(f'\t{gene}, {count}\n')
+
+    summary_report.close()
 
 def main():
     # Chrom gene conversion done
@@ -287,8 +299,8 @@ def main():
     parser.add_argument('-p', '--alpha', type=float, default=0.05, required=False,
                             help='Desired alpha level used for the statistical hypthesis testing.\n\
                                 DEFAULT: 0.05')
-    parser.add_argument('-o', '--output', type = str, default='Macaco_candidate_regions.txt',
-                            help='Output file path for the final output summary of the program.\n\
+    parser.add_argument('-o', '--output', type = str, default='Macaco_candidate_regions',
+                            help='Output file path prefix for the final output summary of the program, generates a .csv and .txt report.\n\
                                 Providing info in list format about every significant SNP including its gene region, location, significance level, and SNPeff')
     args = parser.parse_args()
 
