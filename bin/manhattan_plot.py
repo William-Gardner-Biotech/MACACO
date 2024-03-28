@@ -272,6 +272,11 @@ def generate_report(df, alpha, gff_path:str, output):
     for gene, count in df['gene_region'].value_counts().items():
         summary_report.write(f'\t{gene}, {count}\n')
 
+    summary_report.write('\n\nSNP effects/consequences with number of appearances:\n\n')
+
+    for csq, count in df['consequence'].value_counts().items():
+        summary_report.write(f'\t{csq}, {count}\n')
+
     summary_report.close()
 
 def main():
