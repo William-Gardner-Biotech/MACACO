@@ -4,13 +4,13 @@ import re
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from accession_to_chr import build_acc_chrom_dict
+from accession_to_chr import build_acc_chrom_dict, replace_acc_with_chrom
 from statsmodels.stats.multitest import multipletests
 
-def chr_to_genomic_coords(genomic_gff):
+def chr_to_genomic_coords(genomic_gff, acc_to_chr):
     # Now we need to make a conversion that will build a list of all chromosome positions and add the 
     with open(genomic_gff, 'r') as gff:
-        chroms = list(build_acc_chrom_dict().keys())
+        chroms = list(build_acc_chrom_dict(acc_to_chr).keys())
         # turn chroms into a list that can be compared against by "in" method
         chroms = [str(chrom) for chrom in chroms]
         #print(chroms)
@@ -110,7 +110,7 @@ def gather_dots(genomic_chr_dict, association_file):
     return (df, adj_df)
 
 
-def generate_plot(df, title = 'Manhattan plot (All p-values)'):
+def generate_plot(df, title = 'Manhattan plot (All p-values)', holm_bon = False):
     '''
     Function that will generate the manhattan plot and add coloring based upon chromosome
     '''
@@ -128,23 +128,25 @@ def generate_plot(df, title = 'Manhattan plot (All p-values)'):
         chr_names.append(chr_name)
         chr_positions.append(chr_df['Genomic_Position'].mean()) # finding avg of the group to add the middle x-tick
 
-    # Any obvious p-value ~> 0.75 should be discarded for bonferroni
-    # df['float_p'] = df['p-value'].astype(float)
-    obvious_obs = (df['p-value'] >= 0.5).sum()
-    print(f"OBV OBS: {obvious_obs}")
 
-    # Calculate the Bonferroni p-value to create threshold for p-value over false positives
-    Bonferroni = 0.05 / (df.shape[0])
+    # Only do this section for first graph and skip on second
+    if holm_bon == False:
+        # Any obvious p-value ~> 0.75 should be discarded for bonferroni
+        # df['float_p'] = df['p-value'].astype(float)
+        obvious_obs = (df['p-value'] >= 0.5).sum()
+        print(f"OBV OBS: {obvious_obs}")
 
-    print(f'Bonferroni corrected p-value: {Bonferroni}\nBonferroni minus Obvious OBV: {0.05 / (df.shape[0]- obvious_obs)}')
-    # Add a horizontal dotted line at the threshold -log10 value
-    plt.axhline(y=(-np.log10(Bonferroni)), color='gray', linestyle=':', linewidth=1)
-    plt.axhline(y=(-np.log10(0.05)), color='red', linestyle=':', linewidth=1)
+        # Calculate the Bonferroni p-value to create threshold for p-value over false positives
+        Bonferroni = 0.05 / (df.shape[0])
 
+        print(f'Bonferroni corrected p-value: {Bonferroni}\nBonferroni minus Obvious OBV: {0.05 / (df.shape[0]- obvious_obs)}')
+        # Add a horizontal dotted line at the threshold -log10 value
+        plt.axhline(y=(-np.log10(Bonferroni)), color='gray', linestyle=':', linewidth=1)
+        plt.axhline(y=(-np.log10(0.05)), color='red', linestyle=':', linewidth=1)
 
     plt.xlabel('Chromosome')
     plt.ylabel('-log10 p-values')
-    # Set x-axis ticks and labels
+    # Set x-axis ticks and labels TODO return x axis to chr numbers
     #plt.xticks(chr_positions, chr_names)
     handles, labels = plt.gca().get_legend_handles_labels()
     plt.legend(handles, labels, title='CHROMOSOME', bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -167,6 +169,19 @@ def generate_plot(df, title = 'Manhattan plot (All p-values)'):
     #print('LOG 10 P == 9.338377:')
     #df['neg_log10_p'] = df['neg_log10_p'].astype(float)
     #print(df[(df['neg_log10_p']>=9.3) & (df['neg_log10_p'] <= 9.4)])
+        
+    def generate_report(df, alpha, gff_path:str):
+        """
+        This function will generate a report on all of the findings including, list of all SNP's identified as significant using Bonferroni,
+        Holm-Bonferroni and list their corresponding gene regions, if any. It will also provide metadata statistics on the overall process run.
+        Finally it will also include the SNP effect. It will all be gathered into one large pandas dataframe.
+        """
+
+
+        # First step is to find where the significant SNP's intersect gene regions
+
+
+
 
 
 
@@ -179,15 +194,30 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument('-g', '--gff', type=str, default='MMul_10/ncbi_dataset/data/GCF_003339765.1/genomic.gff', required=False,
-                            help='Mmul10 gff to extract chromosome regions from and gene regions')
+    parser.add_argument('-ng', '--ncbi_gff', type=str, default='MMul_10/ncbi_dataset/data/GCF_003339765.1/genomic.gff', required=False,
+                            help='Mmul10 gff to extract chromosome regions from and gene regions, this has all chromosomes as accession numbers not ')
+    
+    parser.add_argument('-og', '--out_gff', type=str, default='Mmul10_chrom_converted.gff', required=False,
+                            help='Genomic Feature annotation file with corrected chromosome names.') 
+    
+    parser.add_argument('-c', '--acc_to_chr', type=str, default="accession_no_to_Chrom.csv", required=False,
+                            help='This custom file is required for the pipeline to run. It is not generated by this pipeline and instead expected to be built from GenBank.\n\
+                                It is a .csv file with two columns, ACC_NO and CHROM in that order. The program relies on them to be ordered this way to build the new gff file.\n\
+                                This is necessary to annotate the SNPs and find the significant gene regions.')
 
     parser.add_argument('-a', '--assoc', type=str, default='/Users/willgardner/Bioinformatics/macaco/all_cynos/cynos_assoc.assoc', required=False,
                             help='Association statistic file generated by the macaco nextflow script')
+    parser.add_argument('-p', '--alpha', type=float, default=0.05, required=False,
+                            help='Desired alpha level used for the statistical hypthesis testing.\n\
+                                DEFAULT: 0.05')
     args = parser.parse_args()
 
+    # Build the converted gff file
+    x = build_acc_chrom_dict(args.acc_to_chr)
+    replace_acc_with_chrom(x, args.ncbi_gff, args.out_gff) # args.out_gff will be used later for opening with generate report
+
     # Build the relational dict so we can begin converting points for the manhattan plot
-    genome_chr_coords = chr_to_genomic_coords(args.gff)
+    genome_chr_coords = chr_to_genomic_coords(args.ncbi_gff, args.acc_to_chr)
 
     plot_df, adj_df = gather_dots(genome_chr_coords, args.assoc)
 
@@ -195,6 +225,6 @@ def main():
     generate_plot(plot_df)
 
     # Holm-Bonferroni Adj manhattan
-    generate_plot(adj_df, 'Manhattan plot (Holm-Bon significant SNPs)')
+    generate_plot(adj_df, 'Manhattan plot (Holm-Bon significant SNPs)', True)
 
 main()
