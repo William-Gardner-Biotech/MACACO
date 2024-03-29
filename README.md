@@ -6,7 +6,8 @@
                     ██║ ╚═╝ ██║ ██║  ██║ ╚██████╗ ██║ ╚██████╗
                     ╚═╝     ╚═╝ ╚═╝  ╚═╝  ╚═════╝ ╚═╝  ╚═════╝                  
 ```
-![MACIC_image](https://hackmd.io/_uploads/SJ686hV1R.png)
+![MACIC_image](https://github.com/William-Gardner-Biotech/MACIC/assets/99355149/0a37dfef-baa0-4af9-b456-e6c2b4f20f80)
+
 
 Multiple Allelic Comparison to Identify Candidates (MACIC) is a Bioinformatic workflow designed with the express goal of running a GWAS (Genome Wide Association Study) on large VCF files from the same species to identify statistically significant SNPs. MACIC was built using two great open source tools, [PLINK 2.0](https://www.cog-genomics.org/plink/2.0/) and [bcftools](https://github.com/samtools/bcftools), and uses Python to generate plots and assemble reports.
 
