@@ -53,11 +53,11 @@ def chr_to_genomic_coords(genomic_gff, acc_to_chr):
             # remove header lines
             if line.startswith('#'):
                 continue
-            if "ID=gene" in line:
+            elif "ID=gene" in line:
                 #print(line)
                 pass
-            # working to isolate the chromosomes
-            elif "region" in line.split('\t')[2] and line.split('\t')[0] in chroms:
+            # working to isolate the chromosomes on macaque and homo sapien gff
+            elif "region" in line.split('\t')[2] and line.split('\t')[0] in chroms and "chromosome=" in line:
                 #print(line)
                 pattern = r"\=\w*\;"
                 chromosome = re.search(pattern, line).group(0)
@@ -73,6 +73,21 @@ def chr_to_genomic_coords(genomic_gff, acc_to_chr):
                     print(f"Chr {chromosome}, start: {genomic_chrom_start[chromosome]}")
     return genomic_chrom_start
 
+def standardize_SNP_notation(CHR, BP, ALT, REF):
+    """
+    Quick function to handle less robust vcf file naming and transform them into CHR:BP:ALT:REF notation
+    """
+    if CHR.isdigit():
+        if len(CHR) > 2:
+            return False
+        else:
+            return f"{CHR}:{BP}:{ALT}:{REF}"
+    else:
+        if CHR == 'X' or 'Y':
+            return f"{CHR}:{BP}:{ALT}:{REF}"
+        else:
+            return False
+
 def gather_dots(genomic_chr_dict, association_file):
     """
     Function that will take every point on the .assoc file and simplify it to a pandas
@@ -83,6 +98,7 @@ def gather_dots(genomic_chr_dict, association_file):
     # loop through the association file
     # CHR 23 is listed as the number for CHR X
     with open(association_file, 'r') as assoc:
+        assoc.readline() # skip header
         # iterate through and build lists of all 3 (plus POSition) to build into a pandas df
         CHRs = []
         SNPs = []
@@ -90,10 +106,27 @@ def gather_dots(genomic_chr_dict, association_file):
         Ps = []
         for line in assoc:
             # 0 = CHR, 1 = SNP, 7 = P-value 
-            CHR, SNP, _, _, _, _, _, _, P, _ = line.split()
+            CHR, SNP, BP, ALT, _, _, REF, _, P, _ = line.split()
             if len(SNP.split(':')) != 4:
-                print(f'Excluding this line: {line}')
-                continue
+                # Error catching but we can also try and fix less detailed SNP field of assoc file
+                try:
+                    SNP = standardize_SNP_notation(CHR, BP, ALT, REF)
+                except:
+                    print(f'Excluding this line: {line}')
+
+                if SNP:
+                    if P == 'NA' or CHR =='25':
+                        continue
+                    if CHR == '23':
+                        CHR = 'X'
+                    CHRs.append(CHR)
+                    SNPs.append(SNP)
+                    Ps.append(P)
+                    POSs.append(BP)
+                else:
+                    print(f'Excluding this line: {line}')
+                    continue
+            # This uses the hard coded CHR:POS:ALT:REF notation
             else:
                 if P == 'NA':
                     continue
@@ -102,8 +135,7 @@ def gather_dots(genomic_chr_dict, association_file):
                 CHRs.append(CHR)
                 SNPs.append(SNP)
                 Ps.append(P)
-                # Split SNP by colon and retrieve SNP pos relative to the CHR it is on
-                POSs.append(SNP.split(':')[1])
+                POSs.append(BP)
 
     fd = {'CHR': CHRs, 'SNP': SNPs, 'POS': POSs, 'p-value':Ps}
     df = pd.DataFrame(data=fd)
