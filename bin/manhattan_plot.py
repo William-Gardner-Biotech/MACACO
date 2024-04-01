@@ -19,8 +19,8 @@ def build_acc_chrom_dict(acc_to_chrom):
 
 # The Mmul_10 ref genome uses NC_ Accession numbers to name the chromosomes instead of numbering or chr1 etc. This command will replace those acc numbers with their respective chrom number for genes
 def replace_acc_with_chrom(chrom_dict: dict, in_gff, out_gff):
-    if os.path.exists(os.path.join(os.getcwd(), "Mmul10_chrom_converted.gff")):
-        return print(f'Running redundant function, Converted GFF already exists {os.path.join(os.getcwd(), out_gff)}')
+    if os.path.exists(out_gff):
+        return print(f'GFF conversion skipped, Running redundant function, Converted GFF already exists {out_gff}')
     else:
         with open(in_gff, 'r') as filtered_gff, open(out_gff, 'w') as out_bedfile:
             pattern = r"Name=([^;]+)"
