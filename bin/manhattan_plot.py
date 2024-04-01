@@ -4,9 +4,40 @@ import re
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from accession_to_chr import build_acc_chrom_dict, replace_acc_with_chrom
 from statsmodels.stats.multitest import multipletests
 import subprocess
+
+def build_acc_chrom_dict(acc_to_chrom):
+    with open(acc_to_chrom, 'r') as table:
+        chrom_dict = {}
+        for row in table:
+            r_ow = row.split(',')
+            # [0] is accession number [1] is chrom
+            #print(f"ROW: {r_ow[1]}")
+            chrom_dict[r_ow[0]] = r_ow[1].strip()
+    return(chrom_dict)
+
+# The Mmul_10 ref genome uses NC_ Accession numbers to name the chromosomes instead of numbering or chr1 etc. This command will replace those acc numbers with their respective chrom number for genes
+def replace_acc_with_chrom(chrom_dict: dict, in_gff, out_gff):
+    if os.path.exists(os.path.join(os.getcwd(), "Mmul10_chrom_converted.gff")):
+        return print(f'Running redundant function, Converted GFF already exists {os.path.join(os.getcwd(), out_gff)}')
+    else:
+        with open(in_gff, 'r') as filtered_gff, open(out_gff, 'w') as out_bedfile:
+            pattern = r"Name=([^;]+)"
+            for entry in filtered_gff:
+                # skip headers
+                if entry.startswith('#'):
+                    continue
+                if "ID=gene" in entry:
+                    ent_ry = entry.split('\t')
+                    #[0]=accession,[3]=start,[4]=end,[5]=score,[6]=strand,[8]=description
+                    #print(ent_ry)
+                    try:
+                        # Easy to miss but in this line we use the chrom_dict to index and replace the chromosome accession with 1-23,X,Y
+                        bed_line = f"{chrom_dict[ent_ry[0]]}\t{ent_ry[3]}\t{ent_ry[4]}\t{re.search(pattern, ent_ry[8]).group(1)}\t{ent_ry[5]}\t{ent_ry[6]}\n"
+                    except: 
+                        pass
+                    out_bedfile.write(bed_line)
 
 def chr_to_genomic_coords(genomic_gff, acc_to_chr):
     # Now we need to make a conversion that will build a list of all chromosome positions and add the 
@@ -118,11 +149,11 @@ def gather_dots(genomic_chr_dict, association_file):
     #print('Adjusted')
     #print(df['adj_p'].unique())
 
-    adj_df = (df[df['Holm_reject'] == True])
-    adj_df['neg_log10_p'] = df['adj_p'].apply(lambda x: -np.log10(float(x)))
+    adj_df = (df[df['Holm_reject'] == True].copy())
+    adj_df['neg_log10_p'] = adj_df['adj_p'].apply(lambda x: -np.log10(float(x)))
 
+    # returns normal df and the Holm-Bon dataframe
     return (df, adj_df)
-
 
 def generate_plot(df, title = 'Manhattan plot (All p-values)', holm_bon = False):
     '''
@@ -183,7 +214,7 @@ def generate_plot(df, title = 'Manhattan plot (All p-values)', holm_bon = False)
     #df['neg_log10_p'] = df['neg_log10_p'].astype(float)
     #print(df[(df['neg_log10_p']>=9.3) & (df['neg_log10_p'] <= 9.4)])
         
-def generate_report(df, alpha, gff_path:str, output, raw_vcf='all_cynos/raw_vcf.vcf.gz'):
+def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     """
     This function will generate a report on all of the findings including, list of all SNP's identified as significant using Bonferroni,
     Holm-Bonferroni and list their corresponding gene regions, if any. It will also provide metadata statistics on the overall process run.
@@ -238,7 +269,10 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf='all_cynos/raw_vcf.
             return None
 
     # Apply the helper function to the SNP dataframe and add the gene name
-    df['gene_region'] = df.apply(find_gene_name, axis=1)
+    new_df = df.copy()
+    new_df['gene_region'] = new_df.apply(find_gene_name, axis=1)
+    #df.loc[:, 'gene_region'] = df.apply(find_gene_name, axis=1)
+    #df['gene_region'] = df.apply(find_gene_name, axis=1)
 
     # Write the SNP annotations down to txt file then use subsystem to vcftool query the records
     def grab_csq(row):
@@ -261,7 +295,7 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf='all_cynos/raw_vcf.
     # Create a .txt file with all the candidate genes so we can extract those VCF entries using BCFtools and make a new vcf
     #cand_txt = open(output+"_coords.txt", 'w')
     cands = ''
-    for index, entry in enumerate(df['SNP']):
+    for index, entry in enumerate(new_df['SNP']):
         query = entry.strip().split(':')
         cquery = query[0] + ':' + query[1]
         if index > 0:
@@ -273,21 +307,21 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf='all_cynos/raw_vcf.
     subprocess.run(['bgzip', f'{output}.vcf'])
     
     # All working as of 28Mar24
-    df['consequence'] = df.apply(grab_csq, axis=1)
+    new_df['consequence'] = new_df.apply(grab_csq, axis=1)
 
-    df.to_csv(output+'.csv', sep=',')
+    new_df.to_csv(output+'.csv', sep=',')
 
     #print(df.head())
 
     summary_report.write('Significant gene regions and number of candidate SNPs contained within them:\n\n')
 
     #Reporting time
-    for gene, count in df['gene_region'].value_counts().items():
+    for gene, count in new_df['gene_region'].value_counts().items():
         summary_report.write(f'\t{gene}, {count}\n')
 
     summary_report.write('\n\nSNP effects/consequences with number of appearances:\n\n')
 
-    for csq, count in df['consequence'].value_counts().items():
+    for csq, count in new_df['consequence'].value_counts().items():
         summary_report.write(f'\t{csq}, {count}\n')
 
     summary_report.close()
@@ -346,6 +380,6 @@ def main():
     # Holm-Bonferroni Adj manhattan
     generate_plot(adj_df, 'Manhattan plot (Holm-Bon significant SNPs)', True)
 
-    generate_report(plot_df, 0.05, args.out_gff, args.output)
+    generate_report(plot_df, 0.05, args.out_gff, args.output, args.vcf)
 
 main()
