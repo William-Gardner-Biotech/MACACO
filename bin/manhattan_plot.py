@@ -79,7 +79,6 @@ def gather_dots(genomic_chr_dict, association_file):
     Dataframe object with the genomic position column and p score column.
     This function now also rejects hypotheses using both Bonferroni and Holm-Bon methods.
     """
-    print(genomic_chr_dict.keys())
 
     # loop through the association file
     # CHR 23 is listed as the number for CHR X
@@ -109,7 +108,7 @@ def gather_dots(genomic_chr_dict, association_file):
     fd = {'CHR': CHRs, 'SNP': SNPs, 'POS': POSs, 'p-value':Ps}
     df = pd.DataFrame(data=fd)
 
-    print(df['CHR'].unique())
+    #print(df['CHR'].unique())
 
     # use CHR value as key to dict and add this to POS from the SNP
     def calculate_genomic_position(row):
@@ -142,12 +141,6 @@ def gather_dots(genomic_chr_dict, association_file):
     
     df['Holm_reject'] = adjust_p_values(df['p-value'])[0]
     df['adj_p'] = adjust_p_values(df['p-value'])[1]
-
-    #pd.set_option('display.max_rows', None)
-    #print(df.head(500))
-
-    #print('Adjusted')
-    #print(df['adj_p'].unique())
 
     adj_df = (df[df['Holm_reject'] == True].copy())
     adj_df['neg_log10_p'] = adj_df['adj_p'].apply(lambda x: -np.log10(float(x)))
@@ -185,8 +178,7 @@ def generate_plot(df, title = 'Manhattan plot (All p-values)', holm_bon = False)
         plt.axhline(y=(-np.log10(Bonferroni)), color='gray', linestyle=':', linewidth=1)
         plt.axhline(y=(-np.log10(0.05)), color='red', linestyle=':', linewidth=1)
 
-
-    print(df.info())
+    #print(df.info())
 
     plt.xlabel('Chromosome')
     plt.ylabel('-log10 p-values')
@@ -206,13 +198,6 @@ def generate_plot(df, title = 'Manhattan plot (All p-values)', holm_bon = False)
 
         chr_names.append(chr_name)
         chr_positions.append(chr_df['Genomic_Position'].mean())
-    
-    # TODO fixed 26Mar24 MAF = 0.05 to remove the streaks caused by low maf inclusion, left in as a way to visualize the SNP counts
-    #pd.set_option('display.max_rows', None)
-    #print(f'Value Counts:\n {df["p-value"].value_counts()}')
-    #print('LOG 10 P == 9.338377:')
-    #df['neg_log10_p'] = df['neg_log10_p'].astype(float)
-    #print(df[(df['neg_log10_p']>=9.3) & (df['neg_log10_p'] <= 9.4)])
         
 def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     """
@@ -247,7 +232,7 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
         gff_dict = {'CHR': chrs, 'start': starts, 'end': ends, 'gene': names}
         gff_df = pd.DataFrame(gff_dict)
 
-        print(gff_df.head())
+        #print(gff_df.head())
 
     # Isolate the dataframe down to just HB significant values
     df = df[df['Holm_reject']==True]
@@ -327,9 +312,6 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     summary_report.close()
 
 def main():
-    # Chrom gene conversion done
-    #x = build_acc_chrom_dict()
-    #replace_acc_with_chrom(x)
 
     # TODO make all required files True
 
