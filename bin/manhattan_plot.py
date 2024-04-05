@@ -88,7 +88,7 @@ def standardize_SNP_notation(CHR, BP, ALT, REF):
         else:
             return False
 
-def gather_dots(genomic_chr_dict, association_file):
+def gather_dots(genomic_chr_dict, association_file, alpha_a: float):
     """
     Function that will take every point on the .assoc file and simplify it to a pandas
     Dataframe object with the genomic position column and p score column.
@@ -160,16 +160,16 @@ def gather_dots(genomic_chr_dict, association_file):
     print(f"OBV OBS: {obvious_obs}")
 
     # Calculate the Bonferroni p-value to create threshold for p-value over false positives
-    Bonferroni = 0.05 / (df.shape[0])
+    Bonferroni = alpha_a / (df.shape[0])
 
-    print(f'Bonferroni corrected p-value: {Bonferroni}\nBonferroni minus Obvious OBV: {0.05 / (df.shape[0]- obvious_obs)}')
+    print(f'Bonferroni corrected p-value: {Bonferroni}\nBonferroni minus Obvious OBV: {alpha_a / (df.shape[0]- obvious_obs)}')
 
     df["Bon_reject"] = df["p-value"] < Bonferroni
 
     # Adjust the p-values using Hol-Bonferroni
     def adjust_p_values(p_values, chosen_method='holm'):
         # function will return a tuple 0 = reject, 1 = adjusted p-value, 2 = Sidak adjusted, 3 = Bonferroni adjusted
-        return multipletests(p_values, method = chosen_method, is_sorted = False, alpha = 0.05)
+        return multipletests(p_values, method = chosen_method, is_sorted = False, alpha = alpha_a)
     
     df['Holm_reject'] = adjust_p_values(df['p-value'])[0]
     df['adj_p'] = adjust_p_values(df['p-value'])[1]
@@ -180,7 +180,7 @@ def gather_dots(genomic_chr_dict, association_file):
     # returns normal df and the Holm-Bon dataframe
     return (df, adj_df)
 
-def generate_plot(df, output, title = 'Manhattan plot (All p-values)', holm_bon = False):
+def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-values)', holm_bon = False):
     '''
     Function that will generate the manhattan plot and add coloring based upon chromosome.
     Plot generation depends on p-value column of given dataframe so excluding points iis required upstream.
@@ -204,7 +204,7 @@ def generate_plot(df, output, title = 'Manhattan plot (All p-values)', holm_bon 
     if holm_bon == False:
 
         # Calculate the Bonferroni p-value to create threshold for p-value over false positives
-        Bonferroni = 0.05 / (df.shape[0])
+        Bonferroni = alpha_a / (df.shape[0])
 
         # Add a horizontal dotted line at the threshold -log10 value
         plt.axhline(y=(-np.log10(Bonferroni)), color='gray', linestyle=':', linewidth=1)
@@ -245,7 +245,7 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     summary_report.write(f"MACACO output report:\n\
     Total SNPs Passing QC: {len(df)}.\n\
     Hypothesis Testing Significance value used: {alpha}.\n\
-    Bonferroni Corrected p-value: {0.05 / (df.shape[0])}\n\n\
+    Bonferroni Corrected p-value: {alpha / (df.shape[0])}\n\n\
         Number of SNPs rejected with Bonferroni correction:      {len(df[df['Bon_reject']==True])}\n\
         Number of SNPs rejected with Holm-Bonferroni correction: {len(df[df['Holm_reject']==True])}\n\
         Number of SNPs rejected by both tests:                   {len(df[(df['Holm_reject']==True) & (df['Bon_reject']==True)])}\n\n\n")
@@ -387,14 +387,14 @@ def main():
     # Build the relational dict so we can begin converting points for the manhattan plot
     genome_chr_coords = chr_to_genomic_coords(args.ncbi_gff, args.acc_to_chr)
 
-    plot_df, adj_df = gather_dots(genome_chr_coords, args.assoc)
+    plot_df, adj_df = gather_dots(genome_chr_coords, args.assoc, args.alpha)
 
     # Default df plot
-    generate_plot(plot_df, output=args.output)
+    generate_plot(plot_df, args.output, args.alpha)
 
     # Holm-Bonferroni Adj manhattan
-    generate_plot(adj_df, args.output, 'Manhattan plot (Holm-Bon significant SNPs)', True)
+    # generate_plot(adj_df, args.output, args.alpha, 'Manhattan plot (Holm-Bon significant SNPs)', True)
 
-    generate_report(plot_df, 0.05, args.out_gff, args.output, args.vcf)
+    generate_report(plot_df, args.alpha, args.out_gff, args.output, args.vcf)
 
 main()
