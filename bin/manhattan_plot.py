@@ -92,7 +92,7 @@ def gather_dots(genomic_chr_dict, association_file, alpha_a: float):
     """
     Function that will take every point on the .assoc file and simplify it to a pandas
     Dataframe object with the genomic position column and p score column.
-    This function now also rejects hypotheses using both Bonferroni and Holm-Bon methods.
+    This function now also rejects hypotheses using both Bonferroni and Benjamini-Hochberg methods.
     """
 
     # loop through the association file
@@ -162,25 +162,25 @@ def gather_dots(genomic_chr_dict, association_file, alpha_a: float):
     # Calculate the Bonferroni p-value to create threshold for p-value over false positives
     Bonferroni = alpha_a / (df.shape[0])
 
-    print(f'Bonferroni corrected p-value: {Bonferroni}\nBonferroni minus Obvious OBV: {alpha_a / (df.shape[0]- obvious_obs)}')
+    print(f'Bonferroni corrected p-value: {Bonferroni}')
 
     df["Bon_reject"] = df["p-value"] < Bonferroni
 
     # Adjust the p-values using Hol-Bonferroni
-    def adjust_p_values(p_values, chosen_method='holm'):
+    def adjust_p_values(p_values, chosen_method='fdr_bh'):
         # function will return a tuple 0 = reject, 1 = adjusted p-value, 2 = Sidak adjusted, 3 = Bonferroni adjusted
         return multipletests(p_values, method = chosen_method, is_sorted = False, alpha = alpha_a)
     
-    df['Holm_reject'] = adjust_p_values(df['p-value'])[0]
+    df['Ben_Hoch_reject'] = adjust_p_values(df['p-value'])[0]
     df['adj_p'] = adjust_p_values(df['p-value'])[1]
 
-    adj_df = (df[df['Holm_reject'] == True].copy())
+    adj_df = (df[df['Ben_Hoch_reject'] == True].copy())
     adj_df['neg_log10_p'] = adj_df['adj_p'].apply(lambda x: -np.log10(float(x)))
 
-    # returns normal df and the Holm-Bon dataframe
+    # returns normal df and the Ben-Hoch dataframe
     return (df, adj_df)
 
-def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-values)', holm_bon = False):
+def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-values)', ben_hoch = False):
     '''
     Function that will generate the manhattan plot and add coloring based upon chromosome.
     Plot generation depends on p-value column of given dataframe so excluding points iis required upstream.
@@ -201,7 +201,7 @@ def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-valu
 
 
     # Only do this section for first graph and skip on second
-    if holm_bon == False:
+    if ben_hoch == False:
 
         # Calculate the Bonferroni p-value to create threshold for p-value over false positives
         Bonferroni = alpha_a / (df.shape[0])
@@ -222,9 +222,12 @@ def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-valu
 
     plt.title(title)
 
-    if not holm_bon:
-        plt.savefig(output+'_manhattan.svg', format='svg')
-        subprocess.run(['gzip', f'{output}_manhattan.svg'])
+    if not ben_hoch:
+        plt.savefig(output+'_Bon_manhattan.svg', format='svg')
+        subprocess.run(['gzip', f'{output}_Bon_manhattan.svg'])
+    else:
+        plt.savefig(output+'_BH_manhattan.svg', format='svg')
+        subprocess.run(['gzip', f'{output}_BH_manhattan.svg'])
 
     plt.show()
 
@@ -237,7 +240,7 @@ def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-valu
 def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     """
     This function will generate a report on all of the findings including, list of all SNP's identified as significant using Bonferroni,
-    Holm-Bonferroni and list their corresponding gene regions, if any. It will also provide metadata statistics on the overall process run.
+    Benjamini-Hochberg and list their corresponding gene regions, if any. It will also provide metadata statistics on the overall process run.
     Finally it will also include the SNP effect. It will all be gathered into one large pandas dataframe.
     """
     summary_report = open(output+'.txt', 'w')
@@ -246,9 +249,9 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     Total SNPs Passing QC: {len(df)}.\n\
     Hypothesis Testing Significance value used: {alpha}.\n\
     Bonferroni Corrected p-value: {alpha / (df.shape[0])}\n\n\
-        Number of SNPs rejected with Bonferroni correction:      {len(df[df['Bon_reject']==True])}\n\
-        Number of SNPs rejected with Holm-Bonferroni correction: {len(df[df['Holm_reject']==True])}\n\
-        Number of SNPs rejected by both tests:                   {len(df[(df['Holm_reject']==True) & (df['Bon_reject']==True)])}\n\n\n")
+        Number of SNPs rejected with Bonferroni correction:   {len(df[df['Bon_reject']==True])}\n\
+        Number of SNPs rejected with Benjamin-Hoch correction:{len(df[df['Ben_Hoch_reject']==True])}\n\
+        Number of SNPs rejected by both tests:                {len(df[(df['Ben_Hoch_reject']==True) & (df['Bon_reject']==True)])}\n\n\n")
 
     # First step is to find where the significant SNP's intersect gene regions
     with open(gff_path, 'r') as gff:
@@ -269,21 +272,25 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
 
         #print(gff_df.head())
 
-    # Isolate the dataframe down to just HB significant values
-    df = df[df['Holm_reject']==True]
+    # Isolate the dataframe down to just Ben_Hock significant values
+    df = df[df['Ben_Hoch_reject']==True]
 
     # Now that we have a dataframe with all the gff data we can start find where out significant p-values are located.
     def find_gene_name(row):
-        # First step is to check for CHR match
-        chr_match = gff_df['CHR'] == row['CHR']
-        # Find where the SNP intersect within genes in the CHR
+
+        chr_match = gff_df['CHR'] == str(row['CHR'])
+
+        # Find where the SNP intersects within genes in the CHR
         position_in_interval = (
-            (gff_df['start'] <= row['POS']) &
-            (gff_df['end'] >= row['POS'])
+            (gff_df['start'].astype(int) <= int(row['POS'])) &
+            (gff_df['end'].astype(int) >= int(row['POS']))
         )
+
         # subset the df by our two conditions then index out the name
         genes = gff_df[chr_match & position_in_interval]['gene']
         if len(genes) > 0:
+            #print(f"DEBUG 2: POS: {row['CHR']}:{row['POS']}\n{genes}\n")
+            # FIXME multiple genes at one sNP position just being ignored because of this logic
             return genes.values[0]
         else:
             return None
@@ -392,8 +399,8 @@ def main():
     # Default df plot
     generate_plot(plot_df, args.output, args.alpha)
 
-    # Holm-Bonferroni Adj manhattan
-    # generate_plot(adj_df, args.output, args.alpha, 'Manhattan plot (Holm-Bon significant SNPs)', True)
+    # Ben-Hoch Adj manhattan
+    generate_plot(adj_df, args.output, args.alpha, 'Manhattan plot (Ben-Hoch significant SNPs)', True)
 
     generate_report(plot_df, args.alpha, args.out_gff, args.output, args.vcf)
 
