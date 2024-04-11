@@ -21,23 +21,25 @@ def build_acc_chrom_dict(acc_to_chrom):
 def replace_acc_with_chrom(chrom_dict: dict, in_gff, out_gff):
     if os.path.exists(out_gff):
         return print(f'GFF conversion skipped, Running redundant function, Converted GFF already exists {out_gff}')
-    else:
-        with open(in_gff, 'r') as filtered_gff, open(out_gff, 'w') as out_bedfile:
-            pattern = r"Name=([^;]+)"
-            for entry in filtered_gff:
-                # skip headers
-                if entry.startswith('#'):
+    with open(in_gff, 'r') as filtered_gff, open(out_gff, 'w') as out_bedfile:
+        pattern = r"Name=([^;]+)"
+        for entry in filtered_gff:
+            # skip headers
+            if entry.startswith('#'):
+                continue
+            if "ID=gene" in entry:
+                ent_ry = entry.split('\t')
+                assert (
+                    len(ent_ry) == 9
+                ), f"Split entry is not of length 9:\n{ent_ry}"
+                #[0]=accession,[3]=start,[4]=end,[5]=score,[6]=strand,[8]=description
+                #print(ent_ry)
+                try:
+                    # Easy to miss but in this line we use the chrom_dict to index and replace the chromosome accession with 1-23,X,Y
+                    bed_line = f"{chrom_dict[ent_ry[0]]}\t{ent_ry[3]}\t{ent_ry[4]}\t{re.search(pattern, ent_ry[8]).group(1)}\t{ent_ry[5]}\t{ent_ry[6]}\n"
+                except:
                     continue
-                if "ID=gene" in entry:
-                    ent_ry = entry.split('\t')
-                    #[0]=accession,[3]=start,[4]=end,[5]=score,[6]=strand,[8]=description
-                    #print(ent_ry)
-                    try:
-                        # Easy to miss but in this line we use the chrom_dict to index and replace the chromosome accession with 1-23,X,Y
-                        bed_line = f"{chrom_dict[ent_ry[0]]}\t{ent_ry[3]}\t{ent_ry[4]}\t{re.search(pattern, ent_ry[8]).group(1)}\t{ent_ry[5]}\t{ent_ry[6]}\n"
-                    except: 
-                        pass
-                    out_bedfile.write(bed_line)
+                out_bedfile.write(bed_line)
 
 def chr_to_genomic_coords(genomic_gff, acc_to_chr):
     # Now we need to make a conversion that will build a list of all chromosome positions and add the 
@@ -236,8 +238,47 @@ def generate_plot(df, output, alpha_a:float, title = 'Manhattan plot (All p-valu
 
         chr_names.append(chr_name)
         chr_positions.append(chr_df['Genomic_Position'].mean())
+
+# Now that we have a dataframe with all the gff data we can start find where out significant p-values are located.
+def find_gene_name(gff_df: pd.DataFrame, row):
+    """
+    TODO
+    """
+
+    chr_match = gff_df['CHR'] == str(row['CHR'])
+
+    # Find where the SNP intersects within genes in the CHR
+    position_in_interval = (
+        (gff_df['start'].astype(int) <= int(row['POS'])) &
+        (gff_df['end'].astype(int) >= int(row['POS']))
+    )
+
+    # subset the df by our two conditions then index out the name
+    genes = gff_df[chr_match & position_in_interval]['gene']
+    if len(genes) > 0:
+        #print(f"DEBUG 2: POS: {row['CHR']}:{row['POS']}\n{genes}\n")
+        # FIXME multiple genes at one sNP position just being ignored because of this logic
+        return genes.values[0]
+    return None
+
+# Write the SNP annotations down to txt file then use subsystem to vcftool query the records
+def grab_csq(raw_vcf, row):
+    cand_entry = row['SNP'].strip().split(':')
+    can_query = cand_entry[0] + ":" + cand_entry[1]
+
+    # Subprocess using bcftools to query original VCF for the annotations
+    try:
+        record = subprocess.run(['bcftools', 'view', '-H', '-r', can_query, raw_vcf], capture_output=True)
+    except: (exit("Failed to run bcftools subprocess to acquire oiginal SNP vcf entry. Confirm bcftools works on your terminal and file path works."))
+    #print(record.stdout.decode('utf-8'), '\n\n\n')
+    match = re.search(r"CSQ=([^,]*)", record.stdout.decode('utf-8'))
+    if match:
+        csq_value = match.group(1)
+        return csq_value.split('|')[1]
+    return None
+    #candidates.write(f'{cand}\n')
         
-def generate_report(df, alpha, gff_path:str, output, raw_vcf):
+def generate_report(df: pd.DataFrame, alpha: float, gff_path: str, output: str, raw_vcf: str):
     """
     This function will generate a report on all of the findings including, list of all SNP's identified as significant using Bonferroni,
     Benjamini-Hochberg and list their corresponding gene regions, if any. It will also provide metadata statistics on the overall process run.
@@ -254,7 +295,7 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
         Number of SNPs rejected by both tests:                {len(df[(df['Ben_Hoch_reject']==True) & (df['Bon_reject']==True)])}\n\n\n")
 
     # First step is to find where the significant SNP's intersect gene regions
-    with open(gff_path, 'r') as gff:
+    with open(gff_path, 'r', encoding="utf8") as gff:
         chrs = []
         starts = []
         ends = []
@@ -275,67 +316,32 @@ def generate_report(df, alpha, gff_path:str, output, raw_vcf):
     # Isolate the dataframe down to just Ben_Hock significant values
     df = df[df['Ben_Hoch_reject']==True]
 
-    # Now that we have a dataframe with all the gff data we can start find where out significant p-values are located.
-    def find_gene_name(row):
-
-        chr_match = gff_df['CHR'] == str(row['CHR'])
-
-        # Find where the SNP intersects within genes in the CHR
-        position_in_interval = (
-            (gff_df['start'].astype(int) <= int(row['POS'])) &
-            (gff_df['end'].astype(int) >= int(row['POS']))
-        )
-
-        # subset the df by our two conditions then index out the name
-        genes = gff_df[chr_match & position_in_interval]['gene']
-        if len(genes) > 0:
-            #print(f"DEBUG 2: POS: {row['CHR']}:{row['POS']}\n{genes}\n")
-            # FIXME multiple genes at one sNP position just being ignored because of this logic
-            return genes.values[0]
-        else:
-            return None
-
     # Apply the helper function to the SNP dataframe and add the gene name
     new_df = df.copy()
-    new_df['gene_region'] = new_df.apply(find_gene_name, axis=1)
+    new_df['gene_region'] = new_df.apply(lambda row: find_gene_name(gff_df, row), axis=1)
     #df.loc[:, 'gene_region'] = df.apply(find_gene_name, axis=1)
     #df['gene_region'] = df.apply(find_gene_name, axis=1)
-
-    # Write the SNP annotations down to txt file then use subsystem to vcftool query the records
-    def grab_csq(row):
-        cand_entry = row['SNP'].strip().split(':')
-        can_query = cand_entry[0] + ":" + cand_entry[1]
-
-        # Subprocess using bcftools to query original VCF for the annotations
-        try:
-            record = subprocess.run(['bcftools', 'view', '-H', '-r', can_query, raw_vcf], capture_output=True)
-        except: (exit("Failed to run bcftools subprocess to acquire oiginal SNP vcf entry. Confirm bcftools works on your terminal and file path works."))
-        #print(record.stdout.decode('utf-8'), '\n\n\n')
-        match = re.search(r"CSQ=([^,]*)", record.stdout.decode('utf-8'))
-        if match:
-            csq_value = match.group(1)
-            return csq_value.split('|')[1]
-        else:
-            return None
-        #candidates.write(f'{cand}\n')
 
     # Create a .txt file with all the candidate genes so we can extract those VCF entries using BCFtools and make a new vcf
     #cand_txt = open(output+"_coords.txt", 'w')
     cands = ''
     for index, entry in enumerate(new_df['SNP']):
         query = entry.strip().split(':')
+        assert (
+            len(query) == 2
+        ), f"Query returned that is an unexpected length of {len(query)}:\n{query}"
         cquery = query[0] + ':' + query[1]
-        if index > 0:
-            cands += (f',{cquery}')
-        else: cands += (cquery)
+        if index == 0:
+            cands += cquery
+            continue
+        cands += (f',{cquery}')
 
     # Extract a VCF with only your candidate SNPs
     subprocess.run(['bcftools', 'view', '-O', 'v', '-r', cands, raw_vcf], stdout=open(f'{output}.vcf', 'w'))
     subprocess.run(['bgzip', f'{output}.vcf'])
-    
-    # All working as of 28Mar24
-    new_df['consequence'] = new_df.apply(grab_csq, axis=1)
 
+    # All working as of 28Mar24
+    new_df['consequence'] = new_df.apply(lambda row: grab_csq(raw_vcf, row), axis=1)
     new_df.to_csv(output+'.csv', sep=',')
 
     #print(df.head())
@@ -404,4 +410,5 @@ def main():
 
     generate_report(plot_df, args.alpha, args.out_gff, args.output, args.vcf)
 
-main()
+if __name__ == "__main__":
+    main()
