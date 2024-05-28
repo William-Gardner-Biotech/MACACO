@@ -16,6 +16,13 @@ Multiple Allelic Comparison to Identify Candidates (MACIC) is a Bioinformatic wo
 This program requires 4 input files to run:
 1. A VCF file containing your samples of interest (Must be bgzipped).
 2. A PLINK phenotype .txt file to annotate sample phenotypes.
+  - Phenotype file is a tab separated .txt file
+    
+         Animal_ID  Animal_ID_with_family  Phenotype
+         Animal_ID_1  Animal_ID_1(same)  1
+
+  - Phenotype values: 1 = control, 2 = case, 0 = missing phenotype
+
 3. The genbank annotation file (.gff) corresponding to the species.
 4. A handmade .csv file that lists the Accession numbers and chromosomes contained within the .gff
 
