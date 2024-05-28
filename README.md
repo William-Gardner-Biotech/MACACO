@@ -1,3 +1,5 @@
+[![Docker Image CI](https://github.com/William-Gardner-Biotech/MACIC/actions/workflows/main.yml/badge.svg)](https://github.com/William-Gardner-Biotech/MACIC/actions/workflows/main.yml)
+
 ```
                     ███╗   ███╗  █████╗   ██████╗ ██╗  ██████╗
                     ████╗ ████║ ██╔══██╗ ██╔════╝ ██║ ██╔════╝
