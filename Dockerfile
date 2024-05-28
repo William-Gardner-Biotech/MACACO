@@ -1,5 +1,7 @@
 FROM --platform=linux/x86_64 biocontainer/plink2:alpha2.3_jan2020
 
+ARG SAMTOOLS_VER="1.20"
+
 WORKDIR /
 
 # LABEL instructions tag the image with metadata that might be important to the user
