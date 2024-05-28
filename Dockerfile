@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     automake \
     python3 \
     bedtools \
+    libncurses-dev \
     python3-pip \
     vim
 
