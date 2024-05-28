@@ -22,10 +22,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     automake \
     python3 \
     bedtools \
-    libncurses-dev \
     python3-pip \
     vim \
-    zlib1g-dev
+    libncurses5-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libcurl4-gnutls-dev \
+    zlib1g-dev \
+    libssl-dev \
+    gcc \
+    make \
+    ca-certificates \
+    zlib1g \
+    bzip2 \
+    gnuplot \
+    procps && \
 
 # download, compile, and install samtools
 RUN wget -q https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VER}/samtools-${SAMTOOLS_VER}.tar.bz2 && \
