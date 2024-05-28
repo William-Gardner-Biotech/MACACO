@@ -24,7 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bedtools \
     libncurses-dev \
     python3-pip \
-    vim
+    vim \
+    zlib-devel
 
 # download, compile, and install samtools
 RUN wget -q https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VER}/samtools-${SAMTOOLS_VER}.tar.bz2 && \
