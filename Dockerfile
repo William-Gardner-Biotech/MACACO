@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bzip2 \
     gnuplot \
     procps && \
+    apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
 # download, compile, and install samtools
 RUN wget -q https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VER}/samtools-${SAMTOOLS_VER}.tar.bz2 && \
